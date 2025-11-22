@@ -12,7 +12,7 @@ import { Management } from './components/Management';
 import { Login } from './components/Login';
 import { auth, db, initializationError } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { Loader2, AlertTriangle, Settings } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -45,17 +45,33 @@ const App: React.FC = () => {
               whatsapp: userData.phone || undefined
             });
           } else {
-            // Fallback se o usuário existir no Auth mas não no Firestore (ex: criado manualmente no console)
+            // AUTO-CADASTRO: O usuário existe no Auth mas não no Firestore.
+            // Criamos o documento agora para persistir os dados.
+            const newUserProfile = {
+              name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Novo Usuário',
+              email: firebaseUser.email || '',
+              role: 'corretor', // Todo novo usuário começa como corretor
+              createdAt: new Date().toISOString(),
+              phone: '',
+              creci: ''
+            };
+
+            await setDoc(userDocRef, newUserProfile);
+
             setCurrentUser({
               id: firebaseUser.uid,
-              name: firebaseUser.displayName || 'Usuário',
-              email: firebaseUser.email || '',
-              role: 'corretor',
-              avatar: undefined
-            });
+              ...newUserProfile
+            } as User);
           }
         } catch (error) {
-          console.error("Erro ao buscar perfil do usuário:", error);
+          console.error("Erro ao buscar/criar perfil do usuário:", error);
+          // Fallback de emergência para não bloquear o login
+           setCurrentUser({
+              id: firebaseUser.uid,
+              name: firebaseUser.email || 'Usuário',
+              email: firebaseUser.email || '',
+              role: 'corretor'
+            });
         }
       } else {
         setCurrentUser(null);

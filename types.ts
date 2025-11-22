@@ -66,6 +66,8 @@ export interface Lead {
   documents?: LeadDocument[];
   created_at?: string;
   updated_at?: string;
+  assignedTo?: string;
+  createdBy?: string;
 }
 
 export interface Sale {
