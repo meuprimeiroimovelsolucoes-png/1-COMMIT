@@ -41,7 +41,15 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
     }
 
     const unsubSales = onSnapshot(salesQuery, (snapshot) => {
-      const salesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lead));
+      const salesData = snapshot.docs.map(snapshotDoc => {
+        const data = snapshotDoc.data();
+        return { 
+          id: snapshotDoc.id, 
+          ...data,
+          // Normalize created_at from Firestore Timestamp if necessary
+          created_at: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.created_at
+        } as Lead;
+      });
       // Client-side sort by sale date if needed, as Firestore index might differ
       setSales(salesData.sort((a, b) => new Date(b.saleDetails?.saleDate || '').getTime() - new Date(a.saleDetails?.saleDate || '').getTime()));
     });
@@ -51,7 +59,7 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
     const tasksQuery = query(tasksRef, where('userId', '==', user.id)); // Order by time logic can be done client side or complex index
     
     const unsubTasks = onSnapshot(tasksQuery, (snapshot) => {
-       const tasksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+       const tasksData = snapshot.docs.map(snapshotDoc => ({ id: snapshotDoc.id, ...snapshotDoc.data() } as Task));
        setTasks(tasksData);
        setLoading(false);
     });

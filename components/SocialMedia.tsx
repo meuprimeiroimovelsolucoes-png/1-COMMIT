@@ -29,9 +29,9 @@ export const SocialMedia: React.FC<SocialMediaProps> = ({ user }) => {
   useEffect(() => {
     const q = query(collection(db, 'social_posts'), orderBy('date', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedPosts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+      const fetchedPosts = snapshot.docs.map(snapshotDoc => ({
+        id: snapshotDoc.id,
+        ...snapshotDoc.data()
       })) as SocialPost[];
       setPosts(fetchedPosts);
       setIsLoadingData(false);

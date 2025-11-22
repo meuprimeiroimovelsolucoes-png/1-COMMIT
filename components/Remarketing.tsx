@@ -81,10 +81,10 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
     }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedLeads = snapshot.docs.map(doc => {
-        const data = doc.data();
+      const fetchedLeads = snapshot.docs.map(docSnapshot => {
+        const data = docSnapshot.data();
         return {
-          id: doc.id,
+          id: docSnapshot.id,
           ...data,
           // Convert Firestore Timestamp to ISO string if needed, handling standard mock date strings too
           created_at: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : (data.created_at || new Date().toISOString())
@@ -110,10 +110,10 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
 
   // Flatten documents for the "Documents" tab (Admin View)
   const allDocuments = leads.flatMap(lead => 
-    (lead.documents || []).map(doc => ({ ...doc, leadName: lead.name, leadId: lead.id }))
-  ).filter(doc => 
-    doc.name.toLowerCase().includes(search.toLowerCase()) || 
-    doc.leadName?.toLowerCase().includes(search.toLowerCase())
+    (lead.documents || []).map(d => ({ ...d, leadName: lead.name, leadId: lead.id }))
+  ).filter(d => 
+    d.name.toLowerCase().includes(search.toLowerCase()) || 
+    d.leadName?.toLowerCase().includes(search.toLowerCase())
   );
 
   // --- Handlers: Selection ---
@@ -234,8 +234,8 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
     }));
   };
 
-  const handleViewDocument = (doc: LeadDocument) => {
-     alert(`Visualizando documento: ${doc.name}\nURL (Simulada): ${doc.url}`);
+  const handleViewDocument = (documentItem: LeadDocument) => {
+     alert(`Visualizando documento: ${documentItem.name}\nURL (Simulada): ${documentItem.url}`);
   };
 
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -559,4 +559,326 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
            </div>
         )}
 
-        {/* VIEW:
+        {/* VIEW: DOCUMENTS LIST (Admin) */}
+        {activeTab === 'documents' && (
+           <div className="flex-1 overflow-y-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
+                   <tr>
+                      <th className="p-4 font-medium">Documento</th>
+                      <th className="p-4 font-medium">Cliente</th>
+                      <th className="p-4 font-medium">Data</th>
+                      <th className="p-4 font-medium text-right">Ação</th>
+                   </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                   {allDocuments.map((documentItem, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                         <td className="p-4">
+                            <div className="font-bold text-slate-700">{documentItem.name}</div>
+                            <div className="text-xs text-slate-400">{documentItem.type} • {documentItem.size}</div>
+                         </td>
+                         <td className="p-4 text-slate-600">{documentItem.leadName}</td>
+                         <td className="p-4 text-slate-500 text-xs">
+                            {new Date(documentItem.uploadedAt).toLocaleDateString()}
+                         </td>
+                         <td className="p-4 text-right">
+                            <button 
+                               onClick={() => handleViewDocument(documentItem)}
+                               className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg"
+                            >
+                               <Eye size={16} />
+                            </button>
+                         </td>
+                      </tr>
+                   ))}
+                   {allDocuments.length === 0 && (
+                      <tr><td colSpan={4} className="p-8 text-center text-slate-400">Nenhum documento encontrado.</td></tr>
+                   )}
+                </tbody>
+              </table>
+           </div>
+        )}
+      </div>
+
+      {/* RIGHT PANEL: Campaign Creator / Details */}
+      <div className="w-96 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col overflow-y-auto">
+        <h3 className="font-bold text-blue-950 text-lg mb-6 flex items-center gap-2">
+          <Wand2 className="text-orange-500" size={20} /> Criar Campanha
+        </h3>
+
+        <div className="space-y-6">
+          {/* Audience Summary */}
+          <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+            <p className="text-xs font-bold text-blue-500 uppercase tracking-wide mb-1">Público Alvo</p>
+            <div className="flex items-center gap-2">
+              <Users className="text-blue-600" size={20} />
+              <span className="text-xl font-bold text-blue-900">
+                {selectedIds.size > 0 ? selectedIds.size : filteredLeads.length}
+              </span>
+              <span className="text-sm text-blue-700">leads selecionados</span>
+            </div>
+          </div>
+
+          {/* Goal Input */}
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">Objetivo da Campanha</label>
+            <textarea 
+              className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none h-24"
+              placeholder="Ex: Oferecer desconto de 5% no empreendimento X para leads interessados..."
+              value={campaignObjective}
+              onChange={e => setCampaignObjective(e.target.value)}
+            />
+          </div>
+
+          {/* AI Generator Button */}
+          <button 
+            onClick={handleGenerateAI}
+            disabled={isGenerating}
+            className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isGenerating ? <Loader2 className="animate-spin" size={20} /> : <Wand2 size={20} />}
+            {isGenerating ? 'Criando Mensagens...' : 'Gerar com IA'}
+          </button>
+
+          {/* Variations List */}
+          {aiVariations.length > 0 && (
+             <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Sugestões da IA:</p>
+                {aiVariations.map((variation, idx) => (
+                   <div 
+                      key={idx} 
+                      onClick={() => setMessage(variation.message)}
+                      className={`p-3 rounded-xl border cursor-pointer transition-all ${message === variation.message ? 'border-orange-500 bg-orange-50 shadow-md' : 'border-slate-200 hover:border-orange-300 bg-white'}`}
+                   >
+                      <div className="flex justify-between mb-1">
+                         <span className="text-[10px] font-bold bg-slate-100 px-2 py-0.5 rounded text-slate-600">{variation.style}</span>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">"{variation.message}"</p>
+                   </div>
+                ))}
+             </div>
+          )}
+
+          {/* Manual Message Editor */}
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">Mensagem Final</label>
+            <textarea 
+              className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none h-32"
+              placeholder="A mensagem final aparecerá aqui..."
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+            />
+          </div>
+
+          {/* Schedule */}
+          <div className="grid grid-cols-2 gap-3">
+             <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data</label>
+                <input 
+                   type="date" 
+                   className="w-full p-2 border border-slate-200 rounded-lg text-sm"
+                   value={schedule.date}
+                   onChange={e => setSchedule({...schedule, date: e.target.value})}
+                />
+             </div>
+             <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hora</label>
+                <input 
+                   type="time" 
+                   className="w-full p-2 border border-slate-200 rounded-lg text-sm"
+                   value={schedule.time}
+                   onChange={e => setSchedule({...schedule, time: e.target.value})}
+                />
+             </div>
+          </div>
+
+          <button 
+             onClick={handleSchedule}
+             className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2"
+          >
+             <Send size={18} /> Agendar Envio
+          </button>
+
+        </div>
+      </div>
+
+      {/* Create Lead Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+              <h3 className="text-xl font-bold text-blue-950">Novo Lead / Cliente</h3>
+              <button onClick={() => setShowCreateModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+               {/* Basic Info */}
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                     <label className="block text-sm font-medium text-slate-600 mb-1">Nome Completo</label>
+                     <input 
+                        className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                        placeholder="Ex: João Silva"
+                        value={newLead.name}
+                        onChange={e => setNewLead({...newLead, name: e.target.value})}
+                     />
+                  </div>
+                  <div>
+                     <label className="block text-sm font-medium text-slate-600 mb-1">Telefone (WhatsApp)</label>
+                     <input 
+                        className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                        placeholder="11999999999"
+                        value={newLead.phone}
+                        onChange={e => setNewLead({...newLead, phone: e.target.value})}
+                     />
+                  </div>
+                  <div>
+                     <label className="block text-sm font-medium text-slate-600 mb-1">Renda Mensal</label>
+                     <input 
+                        type="number"
+                        className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                        placeholder="R$ 0,00"
+                        value={newLead.income}
+                        onChange={e => setNewLead({...newLead, income: e.target.value})}
+                     />
+                  </div>
+               </div>
+
+               {/* Status & Docs */}
+               <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1">Status Atual</label>
+                  <select 
+                     className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 bg-white"
+                     value={newLead.status}
+                     onChange={e => setNewLead({...newLead, status: e.target.value as LeadStatus})}
+                  >
+                     {statusOptions.map(s => (
+                        <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>
+                     ))}
+                  </select>
+               </div>
+
+               {/* Sale Details Section (Only if Status is Sold) */}
+               {newLead.status === 'vendido' && (
+                  <div className="bg-green-50 p-4 rounded-xl border border-green-100 space-y-3 animate-in slide-in-from-top-2">
+                     <h4 className="font-bold text-green-800 text-sm flex items-center gap-2">
+                        <DollarSign size={16} /> Detalhes da Venda
+                     </h4>
+                     <div className="grid grid-cols-2 gap-3">
+                        <div>
+                           <label className="block text-xs font-bold text-green-700 mb-1">Empreendimento</label>
+                           <input 
+                              className="w-full p-2 rounded border border-green-200 text-sm"
+                              value={saleDetails.developmentName}
+                              onChange={e => setSaleDetails({...saleDetails, developmentName: e.target.value})}
+                           />
+                        </div>
+                        <div>
+                           <label className="block text-xs font-bold text-green-700 mb-1">Etapa</label>
+                           <select
+                              className="w-full p-2 rounded border border-green-200 text-sm"
+                              value={saleDetails.stage}
+                              onChange={e => setSaleDetails({...saleDetails, stage: e.target.value as NegotiationStage})}
+                           >
+                              <option value="contrato_construtora_assinado">Contrato Construtora</option>
+                              <option value="aguardando_assinatura_caixa">Aguardando Banco</option>
+                              <option value="contrato_caixa_assinado">Contrato Banco</option>
+                           </select>
+                        </div>
+                        <div>
+                           <label className="block text-xs font-bold text-green-700 mb-1">Valor Venda</label>
+                           <input 
+                              type="number"
+                              className="w-full p-2 rounded border border-green-200 text-sm"
+                              value={saleDetails.propertyValue}
+                              onChange={e => setSaleDetails({...saleDetails, propertyValue: Number(e.target.value)})}
+                           />
+                        </div>
+                        <div>
+                           <label className="block text-xs font-bold text-green-700 mb-1">Valor Nota (Comissão)</label>
+                           <input 
+                              type="number"
+                              className="w-full p-2 rounded border border-green-200 text-sm"
+                              value={saleDetails.invoiceValue}
+                              onChange={e => setSaleDetails({...saleDetails, invoiceValue: Number(e.target.value)})}
+                           />
+                        </div>
+                     </div>
+                  </div>
+               )}
+
+               {/* Document Upload Section */}
+               <div className="border-t border-slate-100 pt-4">
+                  <label className="block text-sm font-medium text-slate-600 mb-2">Anexar Documentos</label>
+                  <div className="flex gap-2 mb-3">
+                     <select 
+                        className="flex-1 p-2 rounded-lg border border-slate-200 text-sm"
+                        value={docType}
+                        onChange={e => setDocType(e.target.value as DocumentType)}
+                     >
+                        <option value="rg_cnh">RG / CNH</option>
+                        <option value="comprovante_renda">Comprovante Renda</option>
+                        <option value="comprovante_residencia">Comprovante Residência</option>
+                        <option value="extratos_bancarios">Extratos Bancários</option>
+                        <option value="declaracao_ir">Declaração IR</option>
+                        <option value="outros">Outros</option>
+                     </select>
+                     <input 
+                        type="file" 
+                        ref={docInputRef}
+                        className="hidden" 
+                        onChange={handleAddDocument}
+                     />
+                     <button 
+                        onClick={() => docInputRef.current?.click()}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-bold flex items-center gap-2"
+                     >
+                        <Upload size={16} /> Upload
+                     </button>
+                  </div>
+                  
+                  {/* Docs List */}
+                  <div className="space-y-2">
+                     {newLead.documents.map(d => (
+                        <div key={d.id} className="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100 text-sm">
+                           <div className="flex items-center gap-2 overflow-hidden">
+                              <FileCheck size={16} className="text-blue-500 flex-shrink-0" />
+                              <span className="truncate max-w-[150px]">{d.name}</span>
+                              <span className="text-[10px] text-slate-400 bg-slate-200 px-1 rounded">{d.type}</span>
+                           </div>
+                           <button onClick={() => handleDeleteDocument(d.id)} className="text-red-400 hover:text-red-600">
+                              <Trash2 size={14} />
+                           </button>
+                        </div>
+                     ))}
+                  </div>
+               </div>
+
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end gap-3">
+               <button 
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg"
+               >
+                  Cancelar
+               </button>
+               <button 
+                  onClick={handleCreateLead}
+                  disabled={isSaving}
+                  className="px-6 py-2 bg-blue-900 text-white font-medium rounded-lg hover:bg-blue-800 flex items-center gap-2 disabled:opacity-50"
+               >
+                  {isSaving ? <Loader2 className="animate-spin" size={18} /> : <CheckSquare size={18} />}
+                  Salvar Lead
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};

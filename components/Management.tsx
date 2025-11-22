@@ -7,7 +7,7 @@ import {
   AlertCircle, Calendar, FolderOpen, Loader2, Eye, X, User as UserIcon, ShieldCheck, MessageCircle, Timer
 } from 'lucide-react';
 import { db } from '../services/firebase';
-import { collection, query, onSnapshot, where, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, onSnapshot, where, updateDoc, doc, Timestamp } from 'firebase/firestore';
 
 interface BrokerMetric {
   id: string;
@@ -34,7 +34,15 @@ export const Management: React.FC = () => {
     // 1. Fetch All Leads
     const qLeads = query(collection(db, 'leads'));
     const unsubLeads = onSnapshot(qLeads, (snapshot) => {
-       const leadsData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Lead));
+       const leadsData = snapshot.docs.map(snapshotDoc => {
+          const data = snapshotDoc.data();
+          return {
+             id: snapshotDoc.id, 
+             ...data,
+             // Normalize created_at from Firestore Timestamp if necessary
+             created_at: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.created_at
+          } as Lead;
+       });
        setLeads(leadsData);
        setIsLoading(false);
     });
@@ -42,7 +50,7 @@ export const Management: React.FC = () => {
     // 2. Fetch All Users (Brokers)
     const qUsers = query(collection(db, 'users')); // In prod, maybe filter by role
     const unsubUsers = onSnapshot(qUsers, (snapshot) => {
-       const usersData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as User));
+       const usersData = snapshot.docs.map(snapshotDoc => ({id: snapshotDoc.id, ...snapshotDoc.data()} as User));
        setUsers(usersData);
     });
 
@@ -295,18 +303,18 @@ export const Management: React.FC = () => {
                  <button onClick={() => setActiveTab('documents')} className="text-xs font-medium text-blue-600 hover:underline">Ver tudo</button>
                </div>
                <div className="p-4 space-y-3 overflow-y-auto max-h-64">
-                 {docs.slice(0, 4).map((doc, i) => (
+                 {docs.slice(0, 4).map((docItem, i) => (
                    <div key={i} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-3">
-                        <div className={`p-1.5 rounded ${doc.status === 'APROVADO' ? 'bg-green-100 text-green-600' : doc.status === 'REJEITADO' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}`}>
-                           {doc.status === 'APROVADO' ? <CheckCircle2 size={14} /> : doc.status === 'REJEITADO' ? <XCircle size={14} /> : <Clock size={14} />}
+                        <div className={`p-1.5 rounded ${docItem.status === 'APROVADO' ? 'bg-green-100 text-green-600' : docItem.status === 'REJEITADO' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                           {docItem.status === 'APROVADO' ? <CheckCircle2 size={14} /> : docItem.status === 'REJEITADO' ? <XCircle size={14} /> : <Clock size={14} />}
                         </div>
                         <div>
-                          <p className="font-medium text-slate-700 line-clamp-1">{doc.type}</p>
-                          <p className="text-[10px] text-slate-400">{doc.leadName}</p>
+                          <p className="font-medium text-slate-700 line-clamp-1">{docItem.type}</p>
+                          <p className="text-[10px] text-slate-400">{docItem.leadName}</p>
                         </div>
                       </div>
-                      <span className="text-[10px] text-slate-400">{new Date(doc.uploadedAt).toLocaleDateString('pt-BR')}</span>
+                      <span className="text-[10px] text-slate-400">{new Date(docItem.uploadedAt).toLocaleDateString('pt-BR')}</span>
                    </div>
                  ))}
                  {docs.length === 0 && <p className="text-xs text-slate-400 text-center">Sem documentos recentes.</p>}
@@ -435,50 +443,50 @@ export const Management: React.FC = () => {
                  </tr>
                </thead>
                <tbody className="divide-y divide-slate-100">
-                 {docs.sort((a,b) => (a.status === 'PENDENTE' ? -1 : 1)).map((doc, idx) => (
-                   <tr key={`${doc.id}-${idx}`} className={`hover:bg-slate-50 transition-colors ${doc.status === 'PENDENTE' ? 'bg-white' : 'bg-slate-50/50 opacity-75'}`}>
+                 {docs.sort((a,b) => (a.status === 'PENDENTE' ? -1 : 1)).map((docItem, idx) => (
+                   <tr key={`${docItem.id}-${idx}`} className={`hover:bg-slate-50 transition-colors ${docItem.status === 'PENDENTE' ? 'bg-white' : 'bg-slate-50/50 opacity-75'}`}>
                       <td className="px-6 py-4">
                          <div className="flex items-center gap-3">
                             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
                                <FileText size={18} />
                             </div>
                             <div>
-                               <p className="font-bold text-slate-700">{doc.name}</p>
-                               <p className="text-xs text-slate-400">{doc.type} • {doc.size}</p>
+                               <p className="font-bold text-slate-700">{docItem.name}</p>
+                               <p className="text-xs text-slate-400">{docItem.type} • {docItem.size}</p>
                             </div>
                          </div>
                       </td>
                       <td className="px-6 py-4">
                          <div 
-                            onClick={() => setSelectedLeadId(doc.leadId)}
+                            onClick={() => setSelectedLeadId(docItem.leadId)}
                             className="group cursor-pointer hover:bg-slate-100 p-2 rounded-lg -ml-2 transition-colors"
                             title="Clique para ver todos os documentos deste cliente"
                          >
                             <p className="font-bold text-blue-600 group-hover:underline flex items-center gap-1">
-                               {doc.leadName}
+                               {docItem.leadName}
                             </p>
-                            <p className="text-xs text-slate-400">ID: {doc.leadId}</p>
+                            <p className="text-xs text-slate-400">ID: {docItem.leadId}</p>
                          </div>
                       </td>
                       <td className="px-6 py-4 text-slate-600">
-                         {new Date(doc.uploadedAt).toLocaleDateString('pt-BR')}
-                         <p className="text-[10px] text-slate-400">{new Date(doc.uploadedAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
+                         {new Date(docItem.uploadedAt).toLocaleDateString('pt-BR')}
+                         <p className="text-[10px] text-slate-400">{new Date(docItem.uploadedAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
                       </td>
                       <td className="px-6 py-4 text-center">
-                         <StatusBadge status={doc.status} />
+                         <StatusBadge status={docItem.status} />
                       </td>
                       <td className="px-6 py-4 text-right align-middle">
-                         {doc.status === 'PENDENTE' ? (
+                         {docItem.status === 'PENDENTE' ? (
                             <div className="flex justify-end gap-2">
                                <button 
-                                 onClick={() => handleRejectDoc(doc.leadId!, doc.id)}
+                                 onClick={() => handleRejectDoc(docItem.leadId!, docItem.id)}
                                  className="p-2 text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
                                  title="Rejeitar"
                                >
                                   <XCircle size={18} />
                                </button>
                                <button 
-                                 onClick={() => handleApproveDoc(doc.leadId!, doc.id)}
+                                 onClick={() => handleApproveDoc(docItem.leadId!, docItem.id)}
                                  className="p-2 text-green-500 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
                                  title="Aprovar"
                                >
@@ -571,20 +579,20 @@ export const Management: React.FC = () => {
               
               <div className="flex-1 overflow-y-auto p-6 bg-white">
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {selectedLeadDocs.length > 0 ? selectedLeadDocs.map((doc, idx) => (
-                       <div key={`${doc.id}-${idx}`} className="bg-white p-4 border border-slate-200 rounded-xl hover:shadow-lg transition-all flex flex-col h-full">
+                    {selectedLeadDocs.length > 0 ? selectedLeadDocs.map((docItem, idx) => (
+                       <div key={`${docItem.id}-${idx}`} className="bg-white p-4 border border-slate-200 rounded-xl hover:shadow-lg transition-all flex flex-col h-full">
                           <div className="flex items-start justify-between mb-4">
                              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
                                 <FileText size={24} />
                              </div>
-                             <StatusBadge status={doc.status} />
+                             <StatusBadge status={docItem.status} />
                           </div>
                           
                           <div className="flex-1">
-                             <h4 className="font-bold text-slate-800 line-clamp-2 mb-1">{doc.name}</h4>
-                             <p className="text-xs text-slate-500">{doc.type}</p>
+                             <h4 className="font-bold text-slate-800 line-clamp-2 mb-1">{docItem.name}</h4>
+                             <p className="text-xs text-slate-500">{docItem.type}</p>
                              <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                                <Clock size={10} /> Enviado: {new Date(doc.uploadedAt).toLocaleDateString()}
+                                <Clock size={10} /> Enviado: {new Date(docItem.uploadedAt).toLocaleDateString()}
                              </p>
                           </div>
 
@@ -601,16 +609,16 @@ export const Management: React.FC = () => {
                               </button>
                           </div>
 
-                          {doc.status === 'PENDENTE' && (
+                          {docItem.status === 'PENDENTE' && (
                              <div className="mt-2 grid grid-cols-2 gap-2">
                                 <button 
-                                  onClick={() => handleRejectDoc(doc.leadId!, doc.id)}
+                                  onClick={() => handleRejectDoc(docItem.leadId!, docItem.id)}
                                   className="flex items-center justify-center gap-1 p-2 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
                                 >
                                    <XCircle size={14} /> Rejeitar
                                 </button>
                                 <button 
-                                  onClick={() => handleApproveDoc(doc.leadId!, doc.id)}
+                                  onClick={() => handleApproveDoc(docItem.leadId!, docItem.id)}
                                   className="flex items-center justify-center gap-1 p-2 text-xs font-bold text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
                                 >
                                    <CheckCircle2 size={14} /> Aprovar
