@@ -1,16 +1,17 @@
 
-import React, { useState } from 'react';
-import { MOCK_POSTS } from '../constants';
+import React, { useState, useEffect } from 'react';
 import { SocialPost, User } from '../types';
-import { Calendar as CalendarIcon, Instagram, Plus, Wand2, Image as ImageIcon, X, CheckCircle2, AlertCircle, ShieldCheck, Check, Trash2, Clock } from 'lucide-react';
+import { Calendar as CalendarIcon, Instagram, Plus, Wand2, Image as ImageIcon, X, CheckCircle2, AlertCircle, ShieldCheck, Check, Trash2, Clock, Loader2 } from 'lucide-react';
 import { generateCaption } from '../services/geminiService';
+import { db } from '../services/firebase';
+import { collection, addDoc, query, onSnapshot, updateDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
 
 interface SocialMediaProps {
   user: User;
 }
 
 export const SocialMedia: React.FC<SocialMediaProps> = ({ user }) => {
-  const [posts, setPosts] = useState<SocialPost[]>(MOCK_POSTS);
+  const [posts, setPosts] = useState<SocialPost[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [newPost, setNewPost] = useState({
     date: '',
@@ -20,8 +21,23 @@ export const SocialMedia: React.FC<SocialMediaProps> = ({ user }) => {
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
   const isAdmin = user.role === 'gestor' || user.role === 'admin';
+
+  // --- FIRESTORE SUBSCRIPTION ---
+  useEffect(() => {
+    const q = query(collection(db, 'social_posts'), orderBy('date', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedPosts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as SocialPost[];
+      setPosts(fetchedPosts);
+      setIsLoadingData(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Simple calendar grid generation
   const days = Array.from({ length: 30 }, (_, i) => {
@@ -38,44 +54,51 @@ export const SocialMedia: React.FC<SocialMediaProps> = ({ user }) => {
     setIsGenerating(false);
   };
 
-  const handleSavePost = () => {
-    // If admin, schedule directly. If broker, pending approval.
+  const handleSavePost = async () => {
+    if (!newPost.topic || !newPost.date) return alert("Preencha data e tema.");
+
     const status = isAdmin ? 'scheduled' : 'pending_approval';
 
-    const post: SocialPost = {
-      id: Math.random().toString(),
-      date: newPost.date || new Date().toISOString().split('T')[0],
-      platform: newPost.platform as any,
+    const postData = {
+      date: newPost.date,
+      platform: newPost.platform,
       content: newPost.topic,
       caption: newPost.caption,
       status: status,
-      createdBy: user.name
+      createdBy: user.name,
+      createdAt: new Date().toISOString()
     };
-    
-    setPosts([...posts, post]);
-    setShowModal(false);
-    setNewPost({ date: '', topic: '', caption: '', platform: 'instagram_feed' });
-    
-    if (!isAdmin) {
-      alert("Post enviado para aprovação da gestão!");
+
+    try {
+       await addDoc(collection(db, 'social_posts'), postData);
+       setShowModal(false);
+       setNewPost({ date: '', topic: '', caption: '', platform: 'instagram_feed' });
+       if (!isAdmin) alert("Post enviado para aprovação da gestão!");
+    } catch (error) {
+       console.error("Erro ao salvar post", error);
+       alert("Erro ao agendar post.");
     }
   };
 
-  const handleApprove = (id: string) => {
-    setPosts(posts.map(p => p.id === id ? { ...p, status: 'scheduled' } : p));
+  const handleApprove = async (id: string) => {
+    try {
+       await updateDoc(doc(db, 'social_posts', id), { status: 'scheduled' });
+    } catch (e) { console.error(e); }
   };
 
-  const handleReject = (id: string) => {
+  const handleReject = async (id: string) => {
     if(confirm("Deseja rejeitar este agendamento?")) {
-      setPosts(posts.map(p => p.id === id ? { ...p, status: 'rejected' } : p));
+       try {
+          await deleteDoc(doc(db, 'social_posts', id)); // Or update status to 'rejected'
+       } catch (e) { console.error(e); }
     }
   };
 
   // Filter Posts Logic
   const visiblePosts = posts.filter(p => {
     if (reviewMode && isAdmin) return p.status === 'pending_approval';
-    if (isAdmin) return p.status !== 'rejected';
-    // Broker sees: Approved/Scheduled posts OR their own posts (even if pending)
+    // Broker sees: Approved/Scheduled posts OR their own posts
+    if (isAdmin) return true;
     return p.status === 'scheduled' || p.status === 'posted' || (p.createdBy === user.name);
   });
 
@@ -90,6 +113,10 @@ export const SocialMedia: React.FC<SocialMediaProps> = ({ user }) => {
       default: return null;
     }
   };
+
+  if (isLoadingData) {
+    return <div className="flex items-center justify-center h-64"><Loader2 className="animate-spin text-orange-500" size={32} /></div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -211,7 +238,7 @@ export const SocialMedia: React.FC<SocialMediaProps> = ({ user }) => {
                       </div>
                     ))}
                     
-                    {/* Add button: Shows for everyone, but acts differently per role logic */}
+                    {/* Add button */}
                     <button 
                       onClick={() => {
                         setNewPost({...newPost, date: dateStr});

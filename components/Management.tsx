@@ -1,83 +1,141 @@
 
-import React, { useState, useMemo } from 'react';
-import { MOCK_LEADS, MOCK_SALES, MOCK_BROKER_PERFORMANCE, MOCK_USERS } from '../constants';
-import { Lead, Sale, LeadDocument } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Lead, User } from '../types';
 import { 
-  BarChart3, Users, FileText, DollarSign, Download, Filter, 
-  Search, CheckCircle2, XCircle, Clock, ChevronDown, ArrowUpRight, 
-  AlertCircle, TrendingUp, Calendar, FileCheck, MoreHorizontal, ShieldCheck,
-  Eye, X, User as UserIcon, MessageCircle, Timer, FolderOpen
+  BarChart3, Users, FileText, DollarSign, Download, 
+  Search, CheckCircle2, XCircle, Clock, ArrowUpRight, 
+  AlertCircle, Calendar, FolderOpen, Loader2, Eye, X, User as UserIcon, ShieldCheck, MessageCircle, Timer
 } from 'lucide-react';
+import { db } from '../services/firebase';
+import { collection, query, onSnapshot, where, updateDoc, doc } from 'firebase/firestore';
+
+interface BrokerMetric {
+  id: string;
+  name: string;
+  sales: number;
+  totalValue: number;
+  activeLeads: number;
+  conversionRate: string;
+}
 
 export const Management: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'brokers' | 'documents' | 'sales'>('dashboard');
   const [dateFilter, setDateFilter] = useState('this_month');
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // State for Modal
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
-  // Simulated State (In a real app, this would come from the API/Context)
-  const [leads] = useState<Lead[]>(MOCK_LEADS);
-  
-  // Flattened docs state for the main table
-  const [docs, setDocs] = useState(() => 
-    leads.flatMap(lead => (lead.documents || []).map(d => ({...d, leadName: lead.name, leadId: lead.id})))
-  );
+  // Real Data State
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // --- METRICS CALCULATION ---
+  // --- FIRESTORE SUBSCRIPTION ---
+  useEffect(() => {
+    // 1. Fetch All Leads
+    const qLeads = query(collection(db, 'leads'));
+    const unsubLeads = onSnapshot(qLeads, (snapshot) => {
+       const leadsData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Lead));
+       setLeads(leadsData);
+       setIsLoading(false);
+    });
+
+    // 2. Fetch All Users (Brokers)
+    const qUsers = query(collection(db, 'users')); // In prod, maybe filter by role
+    const unsubUsers = onSnapshot(qUsers, (snapshot) => {
+       const usersData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as User));
+       setUsers(usersData);
+    });
+
+    return () => {
+      unsubLeads();
+      unsubUsers();
+    };
+  }, []);
+
+  // --- CALCULATIONS ---
+
+  // Flatten documents for table
+  const docs = useMemo(() => 
+    leads.flatMap(lead => (lead.documents || []).map(d => ({...d, leadName: lead.name, leadId: lead.id}))),
+  [leads]);
+
+  const salesList = useMemo(() => 
+    leads.filter(l => l.status === 'vendido'),
+  [leads]);
+
   const kpis = useMemo(() => {
-    const totalSales = MOCK_SALES.length;
-    const totalRevenue = MOCK_SALES.reduce((acc, s) => acc + s.value, 0);
+    const totalSales = salesList.length;
+    const totalRevenue = salesList.reduce((acc, s) => acc + (s.saleDetails?.propertyValue || 0), 0);
     const totalLeads = leads.length;
-    const activeBrokers = MOCK_USERS.filter(u => u.role === 'corretor').length;
     const pendingDocs = docs.filter(d => d.status === 'PENDENTE').length;
     const conversionRate = totalLeads > 0 ? ((totalSales / totalLeads) * 100).toFixed(1) : '0.0';
-    const avgTicket = totalSales > 0 ? totalRevenue / totalSales : 0;
-    const avgTime = 24; // Days (Mocked)
+    
+    // Calculate avg time (Mocked for now, real impl requires diffing createdAt vs saleDate)
+    const avgTime = 14; 
 
     return {
       totalSales,
       totalRevenue,
       totalLeads,
-      activeBrokers,
       pendingDocs,
       conversionRate,
-      avgTicket,
       avgTime
     };
-  }, [leads, docs]);
+  }, [leads, salesList, docs]);
+
+  // Broker Performance
+  const brokerMetrics: BrokerMetric[] = useMemo(() => {
+    const brokers = users.filter(u => u.role === 'corretor');
+    return brokers.map(broker => {
+      const brokerLeads = leads.filter(l => l.assignedTo === broker.id); // Assuming field is assignedTo
+      const brokerSales = brokerLeads.filter(l => l.status === 'vendido');
+      const salesValue = brokerSales.reduce((acc, s) => acc + (s.saleDetails?.propertyValue || 0), 0);
+      const conversion = brokerLeads.length > 0 ? ((brokerSales.length / brokerLeads.length) * 100).toFixed(1) : '0.0';
+
+      return {
+        id: broker.id,
+        name: broker.name,
+        sales: brokerSales.length,
+        totalValue: salesValue,
+        activeLeads: brokerLeads.length,
+        conversionRate: conversion + '%'
+      };
+    });
+  }, [users, leads]);
+
 
   // --- HANDLERS ---
-  const handleApproveDoc = (docId: string) => {
-    setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'APROVADO' } : d));
+  
+  const handleApproveDoc = async (leadId: string, docId: string) => {
+    // Complex update: Find lead, modify doc array, update Firestore
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead || !lead.documents) return;
+
+    const updatedDocs = lead.documents.map(d => d.id === docId ? {...d, status: 'APROVADO'} : d);
+    await updateDoc(doc(db, 'leads', leadId), { documents: updatedDocs });
   };
 
-  const handleRejectDoc = (docId: string) => {
-    setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'REJEITADO' } : d));
-  };
+  const handleRejectDoc = async (leadId: string, docId: string) => {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead || !lead.documents) return;
 
-  const handleDownloadDoc = (docName: string) => {
-    alert(`Simulando download do arquivo: ${docName}`);
-  };
-
-  const handleViewDoc = (docName: string) => {
-    alert(`Simulando visualização do arquivo: ${docName}`);
+    const updatedDocs = lead.documents.map(d => d.id === docId ? {...d, status: 'REJEITADO'} : d);
+    await updateDoc(doc(db, 'leads', leadId), { documents: updatedDocs });
   };
 
   const handleExport = (type: string) => {
-    const csvContent = "data:text/csv;charset=utf-8,ID,Data,Tipo,Valor,Empreendimento\n" + 
-      MOCK_SALES.map(s => `${s.id},${s.date},Venda,${s.value},${s.development || ''}`).join("\n");
+    // Generic CSV export
+    const csvContent = "data:text/csv;charset=utf-8,ID,Nome,Status,Valor\n" + 
+      leads.map(l => `${l.id},${l.name},${l.status},${l.saleDetails?.propertyValue || 0}`).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `relatorio_gestao_${type}.csv`);
+    link.setAttribute("download", `relatorio_${type}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Get docs for the selected lead (Modal)
   const selectedLeadDocs = useMemo(() => {
     if (!selectedLeadId) return [];
     return docs.filter(d => d.leadId === selectedLeadId);
@@ -85,11 +143,8 @@ export const Management: React.FC = () => {
 
   const selectedLeadName = useMemo(() => {
     if (!selectedLeadId) return '';
-    return docs.find(d => d.leadId === selectedLeadId)?.leadName || 'Cliente';
-  }, [docs, selectedLeadId]);
-
-
-  // --- SUB-COMPONENTS ---
+    return leads.find(l => l.id === selectedLeadId)?.name || 'Cliente';
+  }, [leads, selectedLeadId]);
 
   const SummaryCard = ({ title, value, subtext, icon: Icon, trend, color }: any) => (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-36 relative overflow-hidden group hover:shadow-md transition-all">
@@ -123,6 +178,10 @@ export const Management: React.FC = () => {
     );
   };
 
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-orange-500" size={48} /></div>;
+  }
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-10">
       
@@ -132,7 +191,7 @@ export const Management: React.FC = () => {
           <h2 className="text-3xl font-bold text-blue-950 flex items-center gap-2">
             <ShieldCheck className="text-orange-500" size={32} /> Painel de Gestão
           </h2>
-          <p className="text-slate-500 mt-1 text-sm">Visão estratégica e controle operacional.</p>
+          <p className="text-slate-500 mt-1 text-sm">Visão estratégica e controle operacional (Tempo Real).</p>
         </div>
         
         <div className="flex flex-wrap gap-3">
@@ -235,7 +294,7 @@ export const Management: React.FC = () => {
                  </h3>
                  <button onClick={() => setActiveTab('documents')} className="text-xs font-medium text-blue-600 hover:underline">Ver tudo</button>
                </div>
-               <div className="p-4 space-y-3">
+               <div className="p-4 space-y-3 overflow-y-auto max-h-64">
                  {docs.slice(0, 4).map((doc, i) => (
                    <div key={i} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-3">
@@ -250,10 +309,11 @@ export const Management: React.FC = () => {
                       <span className="text-[10px] text-slate-400">{new Date(doc.uploadedAt).toLocaleDateString('pt-BR')}</span>
                    </div>
                  ))}
+                 {docs.length === 0 && <p className="text-xs text-slate-400 text-center">Sem documentos recentes.</p>}
                </div>
             </div>
 
-            {/* Sales Funnel Widget (Simple Visual) */}
+            {/* Sales Funnel Widget */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col lg:col-span-2">
               <div className="p-5 border-b border-slate-100">
                  <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
@@ -273,13 +333,6 @@ export const Management: React.FC = () => {
                     <span className="relative z-10 text-xs font-bold text-blue-900 flex justify-between w-full">
                        <span>Em Atendimento</span>
                        <span>{Math.floor(kpis.totalLeads * 0.7)} (70%)</span>
-                    </span>
-                 </div>
-                 <div className="w-[40%] bg-blue-50 rounded-lg h-8 relative overflow-hidden flex items-center px-4">
-                    <div className="absolute left-0 top-0 h-full bg-blue-400 w-full rounded-r-lg"></div>
-                    <span className="relative z-10 text-xs font-bold text-blue-900 flex justify-between w-full">
-                       <span>Propostas</span>
-                       <span>{Math.floor(kpis.totalLeads * 0.4)} (40%)</span>
                     </span>
                  </div>
                  <div className="w-[15%] bg-blue-50 rounded-lg h-8 relative overflow-hidden flex items-center px-4">
@@ -317,13 +370,12 @@ export const Management: React.FC = () => {
                 <th className="px-6 py-4 font-medium">Corretor</th>
                 <th className="px-6 py-4 font-medium text-center">Vendas</th>
                 <th className="px-6 py-4 font-medium text-right">VGV Total</th>
-                <th className="px-6 py-4 font-medium text-center">Leads / Msgs</th>
+                <th className="px-6 py-4 font-medium text-center">Leads Ativos</th>
                 <th className="px-6 py-4 font-medium text-center">Conversão</th>
-                <th className="px-6 py-4 font-medium text-right">Último Acesso</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {MOCK_BROKER_PERFORMANCE.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase())).map((broker) => (
+              {brokerMetrics.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase())).map((broker) => (
                 <tr key={broker.id} className="hover:bg-slate-50 transition-colors group">
                    <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -332,7 +384,6 @@ export const Management: React.FC = () => {
                          </div>
                          <div>
                            <p className="font-semibold text-slate-800">{broker.name}</p>
-                           <p className="text-[10px] text-slate-400">ID: {broker.id}</p>
                          </div>
                       </div>
                    </td>
@@ -345,24 +396,18 @@ export const Management: React.FC = () => {
                    <td className="px-6 py-4 text-center">
                       <div className="flex flex-col items-center gap-1">
                         <span className="text-xs font-medium text-slate-600">{broker.activeLeads} Leads</span>
-                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                          <MessageCircle size={10} /> {broker.messagesCount} msgs
-                        </span>
                       </div>
                    </td>
                    <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-2">
-                         <div className="w-16 bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-blue-500 h-full rounded-full" style={{ width: broker.conversionRate }}></div>
-                         </div>
                          <span className="text-xs font-medium">{broker.conversionRate}</span>
                       </div>
                    </td>
-                   <td className="px-6 py-4 text-right text-xs text-slate-500">
-                      {broker.lastLogin || '-'}
-                   </td>
                 </tr>
               ))}
+              {brokerMetrics.length === 0 && (
+                <tr><td colSpan={5} className="text-center py-8 text-slate-400">Nenhum corretor encontrado.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -375,7 +420,6 @@ export const Management: React.FC = () => {
              <h3 className="font-bold text-slate-800">Fila de Aprovação de Documentos</h3>
              <div className="flex gap-2">
                 <button className="px-3 py-1 text-xs font-bold bg-orange-100 text-orange-700 rounded-full">Pendentes ({docs.filter(d => d.status === 'PENDENTE').length})</button>
-                <button className="px-3 py-1 text-xs font-bold bg-slate-100 text-slate-500 rounded-full hover:bg-slate-200">Histórico</button>
              </div>
           </div>
 
@@ -427,14 +471,14 @@ export const Management: React.FC = () => {
                          {doc.status === 'PENDENTE' ? (
                             <div className="flex justify-end gap-2">
                                <button 
-                                 onClick={() => handleRejectDoc(doc.id)}
+                                 onClick={() => handleRejectDoc(doc.leadId!, doc.id)}
                                  className="p-2 text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
                                  title="Rejeitar"
                                >
                                   <XCircle size={18} />
                                </button>
                                <button 
-                                 onClick={() => handleApproveDoc(doc.id)}
+                                 onClick={() => handleApproveDoc(doc.leadId!, doc.id)}
                                  className="p-2 text-green-500 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
                                  title="Aprovar"
                                >
@@ -474,28 +518,31 @@ export const Management: React.FC = () => {
                </tr>
              </thead>
              <tbody className="divide-y divide-slate-100">
-               {MOCK_SALES.map((sale) => (
+               {salesList.map((sale) => (
                  <tr key={sale.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
-                       <p className="font-bold text-slate-800">{sale.development || sale.propertyName}</p>
-                       <p className="text-xs text-slate-500">{sale.clientName}</p>
+                       <p className="font-bold text-slate-800">{sale.saleDetails?.developmentName}</p>
+                       <p className="text-xs text-slate-500">{sale.name}</p>
                     </td>
                     <td className="px-6 py-4 font-medium text-slate-700">
-                       {sale.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                       {sale.saleDetails?.propertyValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </td>
                     <td className="px-6 py-4 font-medium text-green-600 bg-green-50/50">
-                       {(sale.invoiceValue || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                       {(sale.saleDetails?.invoiceValue || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </td>
                     <td className="px-6 py-4">
                        <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-bold uppercase">
-                          {sale.status.replace('_', ' ')}
+                          {sale.saleDetails?.stage?.replace(/_/g, ' ')}
                        </span>
                     </td>
                     <td className="px-6 py-4 text-right text-slate-500">
-                       {new Date(sale.date).toLocaleDateString('pt-BR')}
+                       {sale.saleDetails?.saleDate ? new Date(sale.saleDetails.saleDate).toLocaleDateString('pt-BR') : '-'}
                     </td>
                  </tr>
                ))}
+               {salesList.length === 0 && (
+                  <tr><td colSpan={5} className="text-center py-8 text-slate-400">Nenhuma venda encontrada.</td></tr>
+               )}
              </tbody>
            </table>
         </div>
@@ -543,13 +590,11 @@ export const Management: React.FC = () => {
 
                           <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2">
                               <button 
-                                 onClick={() => handleViewDoc(doc.name)}
                                  className="flex items-center justify-center gap-1 p-2 text-xs font-bold text-slate-600 bg-slate-50 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors"
                               >
                                  <Eye size={14} /> Visualizar
                               </button>
                               <button 
-                                 onClick={() => handleDownloadDoc(doc.name)}
                                  className="flex items-center justify-center gap-1 p-2 text-xs font-bold text-slate-600 bg-slate-50 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors"
                               >
                                  <Download size={14} /> Baixar
@@ -559,13 +604,13 @@ export const Management: React.FC = () => {
                           {doc.status === 'PENDENTE' && (
                              <div className="mt-2 grid grid-cols-2 gap-2">
                                 <button 
-                                  onClick={() => handleRejectDoc(doc.id)}
+                                  onClick={() => handleRejectDoc(doc.leadId!, doc.id)}
                                   className="flex items-center justify-center gap-1 p-2 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
                                 >
                                    <XCircle size={14} /> Rejeitar
                                 </button>
                                 <button 
-                                  onClick={() => handleApproveDoc(doc.id)}
+                                  onClick={() => handleApproveDoc(doc.leadId!, doc.id)}
                                   className="flex items-center justify-center gap-1 p-2 text-xs font-bold text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
                                 >
                                    <CheckCircle2 size={14} /> Aprovar

@@ -10,10 +10,10 @@ import { SocialMedia } from './components/SocialMedia';
 import { ContentRepo } from './components/ContentRepo';
 import { Management } from './components/Management';
 import { Login } from './components/Login';
-import { auth, db } from './services/firebase';
+import { auth, db, initializationError } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle, Settings } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -21,6 +21,12 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Se houve erro na inicialização (ex: falta de chaves), não tenta autenticar
+    if (initializationError || !auth) {
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
@@ -61,11 +67,11 @@ const App: React.FC = () => {
   }, []);
 
   const handleLogin = (user: User) => {
-    // O Auth Listener cuidará do estado, mas podemos forçar a view aqui
     setView(View.DASHBOARD);
   };
 
   const handleLogout = async () => {
+    if (!auth) return;
     try {
       await signOut(auth);
       setCurrentUser(null);
@@ -74,6 +80,40 @@ const App: React.FC = () => {
       console.error("Erro ao sair:", error);
     }
   };
+
+  // TELA DE ERRO DE CONFIGURAÇÃO
+  if (initializationError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+        <div className="bg-white max-w-lg w-full rounded-2xl shadow-xl p-8 text-center">
+          <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle size={32} />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">Configuração Necessária</h2>
+          <p className="text-slate-500 mb-6">
+            O sistema não conseguiu conectar ao Firebase. Isso geralmente ocorre porque as chaves de API não foram configuradas.
+          </p>
+          
+          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-left text-sm font-mono text-slate-600 mb-6 overflow-x-auto">
+            <p className="font-bold text-slate-400 uppercase text-xs mb-2">Erro Técnico:</p>
+            {initializationError}
+          </div>
+
+          <div className="space-y-3 text-left text-sm text-slate-600 bg-blue-50 p-4 rounded-lg">
+            <p className="font-bold text-blue-800 flex items-center gap-2">
+              <Settings size={16} /> Como resolver:
+            </p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Crie um projeto no <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">Firebase Console</a>.</li>
+              <li>Ative o <strong>Authentication</strong> (Email/Senha) e o <strong>Firestore</strong>.</li>
+              <li>Copie as configurações do projeto.</li>
+              <li>Adicione as variáveis de ambiente no seu arquivo <code>.env</code> ou painel da Vercel (ex: <code>NEXT_PUBLIC_FIREBASE_API_KEY</code>).</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -97,7 +137,7 @@ const App: React.FC = () => {
       case View.REMARKETING:
         return <Remarketing user={currentUser} />;
       case View.CRM:
-        return <Crm />;
+        return <Crm user={currentUser} />;
       case View.CALCULATOR:
         return <Calculator />;
       case View.SOCIAL:
