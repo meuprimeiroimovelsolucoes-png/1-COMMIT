@@ -4,9 +4,15 @@ import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { getFunctions, Functions } from 'firebase/functions';
 
-// Configuração direta extraída do seu projeto Firebase (imobmaster-f66c7)
+// Tenta recuperar uma chave salva localmente (caso a do código esteja inválida)
+const savedApiKeyRaw = typeof window !== 'undefined' ? localStorage.getItem('imobmaster_firebase_key') : null;
+// Remove aspas extras caso o usuário tenha copiado errado (Ex: "AIza..." -> AIza...)
+const savedApiKey = savedApiKeyRaw ? savedApiKeyRaw.replace(/['"]/g, '').trim() : null;
+
+// Configuração do Firebase
+// Se houver uma chave salva no localStorage, ela tem prioridade sobre a hardcoded
 const firebaseConfig = {
-  apiKey: "AIzaSyB7U5JRA6_IrTWF4SJkAhzemI81BNpEEKk",
+  apiKey: savedApiKey || "AIzaSyB7U5JRA6_IrTWF4SJkAhzemI81BNpEEKk",
   authDomain: "imobmaster-f66c7.firebaseapp.com",
   projectId: "imobmaster-f66c7",
   storageBucket: "imobmaster-f66c7.firebasestorage.app",
