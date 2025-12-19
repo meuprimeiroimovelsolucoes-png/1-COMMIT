@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CommissionType } from '../types';
-import { Calculator as CalcIcon, DollarSign, PieChart, AlertCircle, ChevronDown, ChevronUp, Info, Pencil, Settings, Home, Users, CheckSquare, Leaf, Percent, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Calculator as CalcIcon, DollarSign, PieChart, AlertCircle, ChevronDown, ChevronUp, Info, Pencil, Settings, Home, Users, CheckSquare, Leaf, Percent, ThumbsUp, ThumbsDown, Gift } from 'lucide-react';
 
 export const Calculator: React.FC = () => {
   // Initialize with formatted strings for inputs
@@ -9,6 +9,10 @@ export const Calculator: React.FC = () => {
   
   const [userIncome, setUserIncome] = useState<number>(8000);
   const [displayIncome, setDisplayIncome] = useState<string>("8.000,00");
+
+  // New Subsidy State
+  const [manualSubsidy, setManualSubsidy] = useState<number>(0);
+  const [displaySubsidy, setDisplaySubsidy] = useState<string>("0,00");
 
   const [entryPercent, setEntryPercent] = useState<number>(20);
   const [commissionType, setCommissionType] = useState<CommissionType>(CommissionType.NEW);
@@ -23,7 +27,6 @@ export const Calculator: React.FC = () => {
 
   // Tax Configuration
   const [taxRate, setTaxRate] = useState<number>(9); 
-  // Hardcoded to Option A (Tax on Total) logic.
 
   // UI State
   const [showCommission, setShowCommission] = useState<boolean>(true);
@@ -48,73 +51,32 @@ export const Calculator: React.FC = () => {
     setterStr(numberValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   };
 
-  // --- MCMV LOGIC HELPERS ---
-  
+  // MCMV interest rate logic
   const getMCMVInterestRate = (monthlyIncome: number, isCotista: boolean) => {
-    let rate = 0.09; // Default standard rate (9% p.a.)
-
+    let rate = 0.09; 
     if (isMCMV) {
-      // Simplified MCMV 2024/2025 Brackets
       if (monthlyIncome <= 2640) rate = 0.0425;
       else if (monthlyIncome <= 4400) rate = 0.0550;
       else if (monthlyIncome <= 8000) rate = 0.0766;
-      else rate = 0.0816; // Cap at Faixa 3 max
-
-      // Cotista bonus (-0.5%)
+      else rate = 0.0816;
       if (isCotista) rate -= 0.005;
     }
-
-    // Convert Annual to Monthly
     return rate / 12;
   };
 
-  const calculateSubsidy = (monthlyIncome: number, hasSocialFactor: boolean) => {
-    if (!isMCMV || monthlyIncome > 4400) return 0;
-
-    let baseSubsidy = 0;
-    const MAX_SUBSIDY_F1 = 55000;
-    const MAX_SUBSIDY_F2 = 55000; 
-
-    // Simplified Curve Logic based on Portaria MCID
-    if (monthlyIncome <= 2640) {
-      baseSubsidy = MAX_SUBSIDY_F1;
-    } else {
-      // Linear degradation from 2640 to 4400
-      const range = 4400 - 2640;
-      const pos = monthlyIncome - 2640;
-      const factor = 1 - (pos / range);
-      baseSubsidy = MAX_SUBSIDY_F2 * factor; 
-    }
-
-    // Social Factor Logic: Fixed bonus if "Factor Social" is checked
-    // Previously multiplied by dependents, now a fixed boolean check.
-    if (hasSocialFactor) {
-      baseSubsidy += 2000; // Fixed bonus for having dependents
-    }
-
-    return Math.min(baseSubsidy, 55000); // Cap at 55k
-  };
-
-  // Constants
-  const months = 420; // 35 years (Common for first home)
+  const months = 420; // 35 years
   
   // --- MAIN CALCULATION ---
-  
-  // 1. Determine Parameters based on USER INCOME
   const monthlyRate = getMCMVInterestRate(userIncome, isCotista);
-  const subsidy = calculateSubsidy(userIncome, hasSocialFactor);
 
-  // 2. Determine Values based on PROPERTY VALUE
+  // Values based on PROPERTY VALUE
   const entryValueRaw = propertyValue * (entryPercent / 100);
-  
-  // In this simulation: Bank finances (Property - EntryRaw). 
-  // Subsidy helps pay the EntryRaw.
   const financedAmount = propertyValue - entryValueRaw; 
   
-  // "Effective Entry" is what comes out of client's pocket
-  const effectiveEntry = Math.max(0, entryValueRaw - subsidy);
+  // "Effective Entry" now strictly uses the manual subsidy input
+  const effectiveEntry = Math.max(0, entryValueRaw - manualSubsidy);
 
-  // 3. Calculate Installment
+  // Calculate Installment
   let firstInstallment = 0;
   if (amortizationSystem === 'SAC') {
     const amortization = financedAmount / months;
@@ -130,9 +92,6 @@ export const Calculator: React.FC = () => {
     }
   }
   
-  // 4. Analyze Approval (Reverse Logic)
-  // Instead of auto-calculating property value, we check if the CURRENT income supports the CURRENT property value.
-  // Max commitment usually 30%
   const maxInstallmentAllowed = userIncome * 0.30;
   const isApproved = firstInstallment <= maxInstallmentAllowed;
   const requiredIncome = firstInstallment / 0.30;
@@ -140,8 +99,6 @@ export const Calculator: React.FC = () => {
 
   // --- COMMISSION LOGIC ---
   const grossCommissionTotal = propertyValue * commissionType;
-  
-  // Option A Logic (Hardcoded): Tax is calculated on the TOTAL gross commission
   const taxValue = grossCommissionTotal * (taxRate / 100);
   const netTotal = grossCommissionTotal - taxValue;
   const brokerShare = netTotal / 2;
@@ -217,6 +174,29 @@ export const Calculator: React.FC = () => {
                     <AlertCircle size={12} />
                     Necessário aprox: {formatMoney(requiredIncome)}
                 </p>
+            )}
+          </div>
+
+          {/* New Subsidy Field (Requested Location) */}
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-2 flex items-center gap-2">
+              Subsídio (Aprovado)
+              <Info size={14} className="text-slate-400" title="Valor do subsídio concedido pelo governo/banco" />
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium font-bold">R$</span>
+              <input 
+                type="text" 
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-green-200 bg-green-50/30 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none font-bold text-lg text-green-700 transition-all shadow-sm"
+                value={displaySubsidy}
+                onChange={(e) => handleCurrencyInput(e, setManualSubsidy, setDisplaySubsidy)}
+                placeholder="0,00"
+              />
+            </div>
+            {manualSubsidy > 0 && (
+              <p className="text-[10px] text-green-600 font-bold uppercase mt-1 flex items-center gap-1">
+                <Gift size={10} /> Subsídio aplicado na entrada
+              </p>
             )}
           </div>
 
@@ -450,10 +430,10 @@ export const Calculator: React.FC = () => {
                      <span className="text-white font-medium">{formatMoney(financedAmount)}</span>
                    </div>
                    
-                   {isMCMV && subsidy > 0 && (
+                   {manualSubsidy > 0 && (
                      <div className="flex justify-between text-green-300 font-bold animate-pulse">
-                        <span>Subsídio Ganho:</span>
-                        <span>+ {formatMoney(subsidy)}</span>
+                        <span>Subsídio Registrado:</span>
+                        <span>+ {formatMoney(manualSubsidy)}</span>
                      </div>
                    )}
 
@@ -496,15 +476,15 @@ export const Calculator: React.FC = () => {
                      <span>Entrada Bruta:</span>
                      <span className="font-medium">{formatMoney(propertyValue * 0.2)}</span>
                    </div>
-                   {isMCMV && subsidy > 0 && (
+                   {manualSubsidy > 0 && (
                       <div className="flex justify-between text-green-600 text-xs">
                         <span>Subsídio:</span>
-                        <span>-{formatMoney(subsidy)}</span>
+                        <span>-{formatMoney(manualSubsidy)}</span>
                       </div>
                    )}
                    <div className="flex justify-between border-t border-slate-100 pt-1">
                      <span>A Pagar (Ato):</span>
-                     <span className="font-bold text-slate-800">{formatMoney(Math.max(0, (propertyValue * 0.2) - subsidy))}</span>
+                     <span className="font-bold text-slate-800">{formatMoney(Math.max(0, (propertyValue * 0.2) - manualSubsidy))}</span>
                    </div>
                 </div>
              </div>
@@ -518,15 +498,15 @@ export const Calculator: React.FC = () => {
                      <span>Entrada Bruta:</span>
                      <span className="font-medium">{formatMoney(propertyValue * 0.5)}</span>
                    </div>
-                   {isMCMV && subsidy > 0 && (
+                   {manualSubsidy > 0 && (
                       <div className="flex justify-between text-green-600 text-xs">
                         <span>Subsídio:</span>
-                        <span>-{formatMoney(subsidy)}</span>
+                        <span>-{formatMoney(manualSubsidy)}</span>
                       </div>
                    )}
                    <div className="flex justify-between border-t border-slate-100 pt-1">
                      <span>A Pagar (Ato):</span>
-                     <span className="font-bold text-slate-800">{formatMoney(Math.max(0, (propertyValue * 0.5) - subsidy))}</span>
+                     <span className="font-bold text-slate-800">{formatMoney(Math.max(0, (propertyValue * 0.5) - manualSubsidy))}</span>
                    </div>
                 </div>
              </div>
