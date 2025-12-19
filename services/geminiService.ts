@@ -1,9 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export const generateCaption = async (topic: string, tone: string = 'profissional'): Promise<string> => {
   try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = 'gemini-2.5-flash';
     const prompt = `
       Atue como um especialista em marketing imobiliário para Instagram.
@@ -37,6 +36,7 @@ export const generateCampaignVariations = async (
   leadSampleName: string
 ): Promise<CampaignVariation[]> => {
    try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `
       Você é um assistente de marketing para corretores de imóveis.
       Crie 3 variações de mensagem para WhatsApp.
@@ -57,9 +57,16 @@ export const generateCampaignVariations = async (
           items: {
             type: Type.OBJECT,
             properties: {
-              style: { type: Type.STRING },
-              message: { type: Type.STRING }
+              style: { 
+                type: Type.STRING,
+                description: 'O estilo da mensagem (ex: Formal, Persuasiva, Curta)'
+              },
+              message: { 
+                type: Type.STRING,
+                description: 'O conteúdo da mensagem para envio no WhatsApp'
+              }
             },
+            propertyOrdering: ["style", "message"],
             required: ['style', 'message']
           }
         }
@@ -74,7 +81,7 @@ export const generateCampaignVariations = async (
      console.error(e);
      return [
        { style: "Padrão", message: `Olá {{name}}, gostaria de retomar nosso contato sobre o imóvel.` },
-       { style: "Erro", message: "Não foi possível conectar à IA. Verifique sua chave de API." }
+       { style: "Erro", message: "Não foi possível conectar à IA. Verifique sua configuração." }
      ];
    }
 }

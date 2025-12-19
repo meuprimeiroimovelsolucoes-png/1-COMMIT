@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { View, User } from '../types';
 import { 
@@ -31,7 +30,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, currentUse
   ];
 
   // Admin specific items
-  // Role check updated to match SQL values
   if (currentUser.role === 'gestor' || currentUser.role === 'admin') {
     navItems.splice(1, 0, { id: View.MANAGEMENT, label: 'Gestão (Admin)', icon: BarChart3 });
   }
@@ -43,7 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, currentUse
           <Building2 size={24} className="text-white" />
         </div>
         <div>
-          <h1 className="font-bold text-lg tracking-tight">ImobMaster</h1>
+          <h1 className="font-bold text-lg tracking-tight">Meu primeiro imóvel</h1>
           <p className="text-xs text-blue-200">Super App Corretor</p>
         </div>
       </div>

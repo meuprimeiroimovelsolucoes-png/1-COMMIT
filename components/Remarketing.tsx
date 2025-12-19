@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Lead, LeadStatus, Campaign, SaleDetails, NegotiationStage, LeadDocument, User, DocumentType } from '../types';
 import { 
@@ -134,10 +133,15 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
 
   // --- Handlers: CRUD & Actions ---
   const handleDelete = async () => {
-    if (confirm(`Excluir ${selectedIds.size} leads selecionados? Esta ação é permanente.`)) {
+    if (window.confirm(`Excluir ${selectedIds.size} leads selecionados? Esta ação é permanente.`)) {
       try {
         const idsToDelete = Array.from(selectedIds);
-        await Promise.all(idsToDelete.map(id => deleteDoc(doc(db, 'leads', id))));
+        const deletePromises = idsToDelete.map(id => {
+          const leadRef = doc(db, 'leads', id);
+          return deleteDoc(leadRef);
+        });
+        
+        await Promise.all(deletePromises);
         setSelectedIds(new Set());
       } catch (error) {
         console.error("Erro ao excluir leads:", error);

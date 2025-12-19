@@ -45,7 +45,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       const errorMessage = (err.message || '').toLowerCase();
       const errString = JSON.stringify(err).toLowerCase();
 
-      // Check specifically for API Key errors (case-insensitive check for robustness)
+      // Check specifically for API Key errors
       if (
         errorCode.includes('api-key') || 
         errorMessage.includes('api-key') || 
@@ -78,7 +78,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   const handleSaveApiKey = () => {
     if (!newApiKey) return;
-    // Remove aspas e espaços extras
     const cleanKey = newApiKey.replace(/['"]/g, '').trim();
     localStorage.setItem('imobmaster_firebase_key', cleanKey);
     window.location.reload();
@@ -99,7 +98,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <div className="mx-auto w-16 h-16 bg-orange-500 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-orange-500/20">
               <Building2 size={32} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-white">ImobMaster AI</h1>
+            <h1 className="text-2xl font-bold text-white">Meu primeiro imóvel</h1>
             <p className="text-blue-200 text-sm mt-1">
               {isSignUp ? 'Crie sua conta de acesso' : 'Plataforma Inteligente para Imobiliárias'}
             </p>
@@ -173,9 +172,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               </button>
             </div>
           ) : (
-            /* Normal Login/Signup Form */
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Email */}
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">E-mail Corporativo</label>
                 <div className="relative">
@@ -192,7 +189,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 </div>
               </div>
 
-              {/* Password */}
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Senha</label>
                 <div className="relative">
@@ -209,7 +205,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 </div>
               </div>
 
-              {/* Confirm Password */}
               {isSignUp && (
                 <div className="animate-in slide-in-from-top-2">
                   <label className="block text-sm font-bold text-slate-700 mb-2">Confirmar Senha</label>
@@ -227,7 +222,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 </div>
               )}
 
-              {/* Error Message */}
               {error && (
                 <div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg border border-red-100 flex items-start gap-2 animate-in fade-in">
                   <div className="mt-0.5 font-bold">!</div>
@@ -235,7 +229,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 </div>
               )}
 
-              {/* Submit Button */}
               <button 
                 type="submit"
                 disabled={isLoading}
@@ -253,7 +246,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </form>
           )}
           
-          {/* Toggle Sign Up / Login */}
           {!showApiKeyInput && (
             <div className="mt-6 pt-4 border-t border-slate-100 text-center">
               <p className="text-sm text-slate-500 mb-2">
