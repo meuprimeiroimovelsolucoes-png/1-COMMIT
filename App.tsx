@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { View, User } from './types';
 import { Navbar } from './components/Navbar';
@@ -77,7 +78,7 @@ const App: React.FC = () => {
 
     switch (currentView) {
       case View.DASHBOARD:
-        return <Dashboard setView={setView} />;
+        return <Dashboard setView={setView} user={currentUser} />;
       case View.REMARKETING:
         return <Remarketing user={currentUser} />;
       case View.CRM:
@@ -91,7 +92,7 @@ const App: React.FC = () => {
       case View.MANAGEMENT:
         return <Management />;
       default:
-        return <Dashboard setView={setView} />;
+        return <Dashboard setView={setView} user={currentUser} />;
     }
   };
 
