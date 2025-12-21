@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Lead, LeadStatus, Campaign, SaleDetails, NegotiationStage, LeadDocument, User, DocumentType } from '../types';
 import { 
   Send, Upload, Clock, Search, Download, Plus, Trash2, CheckSquare, Square, MessageCircle,
-  CalendarCheck, Users, DollarSign, Building2, FileCheck, Paperclip, FileText, X, Eye, User as UserIcon, ShieldCheck, Loader2, Wand2, HandCoins
+  CalendarCheck, Users, DollarSign, Building2, FileCheck, Paperclip, FileText, X, Eye, User as UserIcon, ShieldCheck, Loader2, Wand2, HandCoins, Users as UsersIcon
 } from 'lucide-react';
 import { generateCampaignVariations, CampaignVariation } from '../services/geminiService';
 import { db } from '../services/firebase';
@@ -25,6 +25,9 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'ALL'>('ALL');
 
+  // Brokers list as requested
+  const BROKERS_LIST = ['Keyla', 'Natalia', 'Joao'];
+
   // --- State: Campaign & AI ---
   const [campaignObjective, setCampaignObjective] = useState('');
   const [message, setMessage] = useState('');
@@ -36,13 +39,14 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [newLead, setNewLead] = useState<{
+    brokerName: string;
     name: string;
     phone: string;
     income: string;
     status: LeadStatus;
     visitDate?: string;
     documents: LeadDocument[];
-  }>({ name: '', phone: '', income: '', status: 'novo', documents: [] });
+  }>({ brokerName: 'Keyla', name: '', phone: '', income: '', status: 'novo', documents: [] });
   
   const [saleDetails, setSaleDetails] = useState<SaleDetails>({
     propertyValue: 0,
@@ -128,14 +132,14 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
         income: parseFloat(newLead.income) || 0,
         status: newLead.status,
         createdAt: Timestamp.now(),
-        assignedTo: user.id,
+        assignedTo: newLead.brokerName,
         createdBy: user.name,
         saleDetails: newLead.status === 'vendido' ? saleDetails : null,
         documents: newLead.documents
       };
       await addDoc(collection(db, 'leads'), leadData);
       setShowCreateModal(false);
-      setNewLead({ name: '', phone: '', income: '', status: 'novo', documents: [] });
+      setNewLead({ brokerName: 'Keyla', name: '', phone: '', income: '', status: 'novo', documents: [] });
     } catch (error) {
       console.error(error);
     } finally {
@@ -145,6 +149,7 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
 
   const handleQuickSell = (lead: Lead) => {
     setNewLead({
+      brokerName: lead.assignedTo || 'Keyla',
       name: lead.name,
       phone: lead.phone,
       income: lead.income?.toString() || '',
@@ -223,6 +228,7 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
                     <tr className="text-left font-bold uppercase tracking-wider">
                       <th className="p-4 w-10"><button onClick={toggleSelectAll}>{selectedIds.size > 0 ? <CheckSquare size={18} /> : <Square size={18} />}</button></th>
                       <th className="p-4">Lead</th>
+                      <th className="p-4">Responsável</th>
                       <th className="p-4">Status</th>
                       <th className="p-4 text-right">Ações</th>
                     </tr>
@@ -234,6 +240,11 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
                         <td className="p-4">
                           <div className="font-bold text-slate-800">{lead.name}</div>
                           <div className="text-xs text-slate-400">{lead.phone}</div>
+                        </td>
+                        <td className="p-4">
+                           <span className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                             <UserIcon size={12} className="text-slate-400" /> {lead.assignedTo || 'Sistema'}
+                           </span>
                         </td>
                         <td className="p-4">{getStatusBadge(lead.status)}</td>
                         <td className="p-4 text-right flex justify-end gap-1">
@@ -272,26 +283,96 @@ export const Remarketing: React.FC<RemarketingProps> = ({ user }) => {
               <button onClick={() => setShowCreateModal(false)}><X size={20} /></button>
             </div>
             <div className="space-y-4">
-              <input className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" placeholder="Nome do Cliente" value={newLead.name} onChange={e => setNewLead({...newLead, name: e.target.value})} />
-              <input className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" placeholder="WhatsApp" value={newLead.phone} onChange={e => setNewLead({...newLead, phone: e.target.value})} />
-              <select className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" value={newLead.status} onChange={e => setNewLead({...newLead, status: e.target.value as LeadStatus})}>
-                {statusOptions.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
-              </select>
+              {/* Corretor Selector */}
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Corretor Responsável</label>
+                <div className="relative">
+                  <UsersIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <select 
+                    className="w-full pl-10 p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                    value={newLead.brokerName}
+                    onChange={e => setNewLead({...newLead, brokerName: e.target.value})}
+                  >
+                    {BROKERS_LIST.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Nome Completo</label>
+                <input className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" placeholder="Nome do Cliente" value={newLead.name} onChange={e => setNewLead({...newLead, name: e.target.value})} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Telefone (WhatsApp)</label>
+                  <input className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" placeholder="85989516256" value={newLead.phone} onChange={e => setNewLead({...newLead, phone: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Renda Mensal</label>
+                  <input className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" placeholder="2500" value={newLead.income} onChange={e => setNewLead({...newLead, income: e.target.value})} />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Status Atual</label>
+                <select className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" value={newLead.status} onChange={e => setNewLead({...newLead, status: e.target.value as LeadStatus})}>
+                  {statusOptions.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
+                </select>
+              </div>
 
               {newLead.status === 'vendido' && (
-                <div className="bg-green-50 p-4 rounded-xl border border-green-100 space-y-3">
-                  <h4 className="font-bold text-green-800 text-sm">Dados do Contrato</h4>
-                  <input className="w-full p-2 rounded border border-green-200 text-sm" placeholder="Empreendimento" value={saleDetails.developmentName} onChange={e => setSaleDetails({...saleDetails, developmentName: e.target.value})} />
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="number" className="p-2 rounded border border-green-200 text-sm" placeholder="VGV (Valor Venda)" value={saleDetails.propertyValue || ''} onChange={e => setSaleDetails({...saleDetails, propertyValue: Number(e.target.value)})} />
-                    <input type="number" className="p-2 rounded border border-green-200 text-sm" placeholder="Comissão" value={saleDetails.invoiceValue || ''} onChange={e => setSaleDetails({...saleDetails, invoiceValue: Number(e.target.value)})} />
+                <div className="bg-green-50 p-4 rounded-xl border border-green-100 space-y-4">
+                  <h4 className="font-bold text-green-800 text-sm flex items-center gap-2">
+                    <DollarSign size={16} /> Detalhes da Venda
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-green-700 mb-1">Empreendimento</label>
+                      <input className="w-full p-2 rounded border border-green-200 text-sm" placeholder="Nome do condomínio" value={saleDetails.developmentName} onChange={e => setSaleDetails({...saleDetails, developmentName: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-green-700 mb-1">Etapa</label>
+                      <select className="w-full p-2 rounded border border-green-200 text-sm" value={saleDetails.stage} onChange={e => setSaleDetails({...saleDetails, stage: e.target.value as NegotiationStage})}>
+                        <option value="contrato_construtora_assinado">Contrato Construtora</option>
+                        <option value="aguardando_assinatura_caixa">Aguardando Banco</option>
+                        <option value="contrato_caixa_assinado">Assinatura Banco</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-green-700 mb-1">Valor Venda</label>
+                      <input type="number" className="w-full p-2 rounded border border-green-200 text-sm" placeholder="0,00" value={saleDetails.propertyValue || ''} onChange={e => setSaleDetails({...saleDetails, propertyValue: Number(e.target.value)})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-green-700 mb-1">Valor Nota (Comissão)</label>
+                      <input type="number" className="w-full p-2 rounded border border-green-200 text-sm" placeholder="0,00" value={saleDetails.invoiceValue || ''} onChange={e => setSaleDetails({...saleDetails, invoiceValue: Number(e.target.value)})} />
+                    </div>
                   </div>
                 </div>
               )}
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Anexar Documentos</label>
+                <div className="flex gap-2">
+                   <select className="flex-1 p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500 bg-white text-sm">
+                      <option value="rg_cnh">RG / CNH</option>
+                      <option value="comprovante_renda">Comprovante Renda</option>
+                      <option value="comprovante_residencia">Comprovante Residência</option>
+                   </select>
+                   <button className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg flex items-center gap-2 font-bold text-sm border border-slate-200 hover:bg-slate-200">
+                      <Upload size={16} /> Upload
+                   </button>
+                </div>
+              </div>
             </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 text-slate-500 font-bold">Cancelar</button>
-              <button onClick={handleCreateLead} className="px-6 py-2 bg-blue-900 text-white font-bold rounded-lg">{isSaving ? 'Salvando...' : 'Confirmar'}</button>
+            <div className="mt-8 flex justify-end gap-3 border-t pt-4">
+              <button onClick={() => setShowCreateModal(false)} className="px-6 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Cancelar</button>
+              <button onClick={handleCreateLead} className="px-8 py-2 bg-blue-900 hover:bg-blue-800 text-white font-bold rounded-lg shadow-lg flex items-center gap-2">
+                {isSaving ? <Loader2 size={18} className="animate-spin" /> : <FileCheck size={18} />} 
+                Salvar Lead
+              </button>
             </div>
           </div>
         </div>
