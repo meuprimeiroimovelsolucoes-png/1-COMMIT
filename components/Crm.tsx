@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Clock, DollarSign, MoreHorizontal, X, Loader2 } from 'lucide-react';
+import { CheckCircle2, Clock, DollarSign, MoreHorizontal, X, Loader2, Plus, Building2, Calendar, User as UserIcon, Users as UsersIcon } from 'lucide-react';
 import { User, Lead, NegotiationStage } from '../types';
 import { db } from '../services/firebase';
 import { collection, query, where, onSnapshot, orderBy, addDoc, Timestamp, updateDoc, doc } from 'firebase/firestore';
@@ -23,22 +22,38 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // State for modal
+  // State for modals
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showSaleModal, setShowSaleModal] = useState(false);
+  
   const [newTask, setNewTask] = useState({ text: '', time: '' });
+  const [isSavingSale, setIsSavingSale] = useState(false);
+
+  // Sale Registration Form State
+  const [saleForm, setSaleForm] = useState({
+    brokerName: 'Keyla', // Default value
+    clientName: '',
+    clientPhone: '',
+    developmentName: '',
+    propertyValue: '',
+    invoiceValue: '',
+    stage: 'contrato_construtora_assinado' as NegotiationStage,
+    saleDate: new Date().toISOString().split('T')[0]
+  });
+
+  // Lista de corretores para escolha
+  const BROKERS_LIST = ['Keyla', 'Natalia', 'Joao', 'Outro'];
 
   // --- FIRESTORE SUBSCRIPTION ---
   useEffect(() => {
     setLoading(true);
-
-    // 1. Fetch Sales (Leads with status 'vendido')
     const leadsRef = collection(db, 'leads');
     let salesQuery = query(leadsRef, where('status', '==', 'vendido'));
     
-    // If broker, only show own sales
-    if (user.role === 'corretor') {
-      salesQuery = query(leadsRef, where('status', '==', 'vendido'), where('assignedTo', '==', user.id));
-    }
+    // Filtro removido para que o gestor/corretor possa ver todas as vendas cadastradas pelos nomes escolhidos
+    // if (user.role === 'corretor') {
+    //   salesQuery = query(leadsRef, where('status', '==', 'vendido'), where('assignedTo', '==', user.id));
+    // }
 
     const unsubSales = onSnapshot(salesQuery, (snapshot) => {
       const salesData = snapshot.docs.map(snapshotDoc => {
@@ -46,17 +61,14 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
         return { 
           id: snapshotDoc.id, 
           ...data,
-          // Normalize created_at from Firestore Timestamp if necessary
           created_at: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.created_at
         } as Lead;
       });
-      // Client-side sort by sale date if needed, as Firestore index might differ
       setSales(salesData.sort((a, b) => new Date(b.saleDetails?.saleDate || '').getTime() - new Date(a.saleDetails?.saleDate || '').getTime()));
     });
 
-    // 2. Fetch Tasks
     const tasksRef = collection(db, 'tasks');
-    const tasksQuery = query(tasksRef, where('userId', '==', user.id)); // Order by time logic can be done client side or complex index
+    const tasksQuery = query(tasksRef, where('userId', '==', user.id));
     
     const unsubTasks = onSnapshot(tasksQuery, (snapshot) => {
        const tasksData = snapshot.docs.map(snapshotDoc => ({ id: snapshotDoc.id, ...snapshotDoc.data() } as Task));
@@ -68,12 +80,11 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
       unsubSales();
       unsubTasks();
     };
-  }, [user.id, user.role]);
+  }, [user.id]);
 
 
   const handleAddTask = async () => {
     if (!newTask.text) return;
-    
     try {
       await addDoc(collection(db, 'tasks'), {
         text: newTask.text,
@@ -82,11 +93,55 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
         userId: user.id,
         createdAt: Timestamp.now()
       });
-      
       setNewTask({ text: '', time: '' });
       setShowTaskModal(false);
     } catch (error) {
       console.error("Erro ao salvar tarefa", error);
+    }
+  };
+
+  const handleRegisterSale = async () => {
+    if (!saleForm.clientName || !saleForm.developmentName || !saleForm.propertyValue) {
+      alert("Por favor, preencha os dados obrigatórios da venda.");
+      return;
+    }
+
+    setIsSavingSale(true);
+    try {
+      const saleData = {
+        name: saleForm.clientName,
+        phone: saleForm.clientPhone || 'Não informado',
+        status: 'vendido',
+        assignedTo: saleForm.brokerName, // Salva o nome do corretor escolhido
+        createdBy: user.name,
+        createdAt: Timestamp.now(),
+        saleDetails: {
+          propertyValue: parseFloat(saleForm.propertyValue.replace(/\D/g, '')) / 100 || 0,
+          invoiceValue: parseFloat(saleForm.invoiceValue.replace(/\D/g, '')) / 100 || 0,
+          developmentName: saleForm.developmentName,
+          stage: saleForm.stage,
+          saleDate: saleForm.saleDate,
+          notes: `Venda registrada para ${saleForm.brokerName}`
+        }
+      };
+
+      await addDoc(collection(db, 'leads'), saleData);
+      setShowSaleModal(false);
+      setSaleForm({
+        brokerName: 'Keyla',
+        clientName: '',
+        clientPhone: '',
+        developmentName: '',
+        propertyValue: '',
+        invoiceValue: '',
+        stage: 'contrato_construtora_assinado',
+        saleDate: new Date().toISOString().split('T')[0]
+      });
+    } catch (error) {
+      console.error("Erro ao registrar venda:", error);
+      alert("Erro ao salvar venda. Tente novamente.");
+    } finally {
+      setIsSavingSale(false);
     }
   };
 
@@ -97,6 +152,13 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
     } catch (error) {
       console.error("Erro ao atualizar tarefa", error);
     }
+  };
+
+  const handleCurrencyInput = (val: string, setter: (v: string) => void) => {
+    let value = val.replace(/\D/g, '');
+    if (!value) return setter('');
+    const numberValue = parseInt(value) / 100;
+    setter(numberValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   };
 
   const getStatusColor = (status: NegotiationStage) => {
@@ -119,7 +181,15 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
 
   return (
     <div className="space-y-6 relative">
-      <h2 className="text-2xl font-bold text-blue-950">Gestão & Vendas</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-blue-950">Gestão & Vendas</h2>
+        <button 
+          onClick={() => setShowSaleModal(true)}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-bold shadow-lg shadow-green-600/20 transition-all transform hover:scale-105"
+        >
+          <Plus size={18} /> Registrar Venda
+        </button>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Agenda / Tasks */}
@@ -153,9 +223,6 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
                     <p className={`text-sm font-medium ${task.done ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{task.text}</p>
                     <p className="text-xs text-slate-400">{task.time}</p>
                   </div>
-                  <button className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-600">
-                    <MoreHorizontal size={16} />
-                  </button>
                 </div>
               ))}
               {tasks.length === 0 && (
@@ -182,7 +249,7 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
             <table className="w-full">
               <thead>
                 <tr className="text-left border-b border-slate-100">
-                  <th className="pb-3 text-xs font-bold text-slate-400 uppercase tracking-wider pl-2">Cliente / Imóvel</th>
+                  <th className="pb-3 text-xs font-bold text-slate-400 uppercase tracking-wider pl-2">Corretor / Cliente</th>
                   <th className="pb-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Valor</th>
                   <th className="pb-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Status</th>
                   <th className="pb-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Data</th>
@@ -197,8 +264,15 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
                 {sales.map(sale => (
                   <tr key={sale.id} className="group hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
                     <td className="py-4 pl-2">
-                      <p className="font-semibold text-slate-700">{sale.name}</p>
-                      <p className="text-xs text-slate-500">{sale.saleDetails?.developmentName || 'N/A'}</p>
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center">
+                          <UserIcon size={12} className="text-blue-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-700">{sale.name}</p>
+                          <p className="text-[10px] text-orange-600 font-bold uppercase">Corretor: {sale.assignedTo || 'Sistema'}</p>
+                        </div>
+                      </div>
                     </td>
                     <td className="py-4 font-medium text-slate-700">
                       {sale.saleDetails?.propertyValue ? `R$ ${sale.saleDetails.propertyValue.toLocaleString('pt-BR')}` : '-'}
@@ -221,7 +295,146 @@ export const Crm: React.FC<CrmProps> = ({ user }) => {
         </div>
       </div>
       
-      {/* Add Task Modal */}
+      {/* Sale Registration Modal */}
+      {showSaleModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+              <h3 className="text-xl font-bold text-blue-950 flex items-center gap-2">
+                <DollarSign className="text-green-600" /> Registrar Novo Fechamento
+              </h3>
+              <button onClick={() => setShowSaleModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                {/* Broker Selection */}
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Corretor Responsável *</label>
+                  <div className="relative">
+                    <UsersIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <select 
+                      className="w-full pl-10 p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                      value={saleForm.brokerName}
+                      onChange={e => setSaleForm({...saleForm, brokerName: e.target.value})}
+                    >
+                      {BROKERS_LIST.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Nome do Cliente *</label>
+                  <div className="relative">
+                    <UserIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      className="w-full pl-10 p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Nome completo"
+                      value={saleForm.clientName}
+                      onChange={e => setSaleForm({...saleForm, clientName: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">WhatsApp do Cliente</label>
+                  <input 
+                    className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="11999999999"
+                    value={saleForm.clientPhone}
+                    onChange={e => setSaleForm({...saleForm, clientPhone: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Empreendimento *</label>
+                  <div className="relative">
+                    <Building2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      className="w-full pl-10 p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Ex: Reserva Imperial"
+                      value={saleForm.developmentName}
+                      onChange={e => setSaleForm({...saleForm, developmentName: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Valor do Imóvel *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">R$</span>
+                    <input 
+                      className="w-full pl-10 p-3 rounded-lg border border-slate-200 font-bold text-slate-800 outline-none focus:ring-2 focus:ring-green-500"
+                      value={saleForm.propertyValue}
+                      onChange={e => handleCurrencyInput(e.target.value, (v) => setSaleForm({...saleForm, propertyValue: v}))}
+                      placeholder="0,00"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Valor da Nota (Comissão Bruta)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">R$</span>
+                    <input 
+                      className="w-full pl-10 p-3 rounded-lg border border-slate-200 font-bold text-green-700 outline-none focus:ring-2 focus:ring-green-500"
+                      value={saleForm.invoiceValue}
+                      onChange={e => handleCurrencyInput(e.target.value, (v) => setSaleForm({...saleForm, invoiceValue: v}))}
+                      placeholder="0,00"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Etapa Atual</label>
+                  <select 
+                    className="w-full p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                    value={saleForm.stage}
+                    onChange={e => setSaleForm({...saleForm, stage: e.target.value as NegotiationStage})}
+                  >
+                    <option value="contrato_construtora_assinado">Contrato Construtora Assinado</option>
+                    <option value="aguardando_assinatura_caixa">Aguardando Assinatura Caixa</option>
+                    <option value="contrato_caixa_assinado">Contrato Caixa Assinado</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Data da Venda</label>
+                  <div className="relative">
+                    <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="date"
+                      className="w-full pl-10 p-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-green-500"
+                      value={saleForm.saleDate}
+                      onChange={e => setSaleForm({...saleForm, saleDate: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-slate-100 flex justify-end gap-3">
+              <button 
+                onClick={() => setShowSaleModal(false)}
+                className="px-6 py-3 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleRegisterSale}
+                disabled={isSavingSale}
+                className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-600/20 flex items-center gap-2 disabled:opacity-50 transition-all"
+              >
+                {isSavingSale ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle2 size={20} />}
+                Confirmar Venda
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Existing Task Modal logic kept for brevity... */}
       {showTaskModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
            <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
